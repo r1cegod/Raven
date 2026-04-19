@@ -5,14 +5,19 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 .venv/
+.venv-win/
 
 # Local env
 .env
 
 # Raven runtime data
 data/
+*.sqlite
 
 # OS/editor
 .DS_Store
 .idea/
 .vscode/
+scratch
+.codex
+docs

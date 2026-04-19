@@ -1,4 +1,5 @@
-"Nga you aint making 10k/month with that 1 week vibecoded sloppy shit"
+"When will people understand only AI can debug AI code?"
+
 **Raven** is a Knowledge Signal Engine. It ranks public sources, extracts claims,
 records Duc's rating, and turns the disagreement into a sharper detector (for now).
 
@@ -19,11 +20,38 @@ Get metadatas -> Rate -> Get raw data -> Rate again -> report -> ingest
 - **Logs:** `logs/DEV_LOG.md`
 
 ### How To Use
-Nope ya can't use this yet.
+Active Raven is still being built from the backend upward.
+
+Use the repo venv for backend checks:
+
+```bash
+./.venv/bin/python -m py_compile src/backend/db.py src/backend/search/youtube_search.py
+```
+
+Current YouTube search smoke shape:
+
+```bash
+./.venv/bin/python - <<'PY'
+from src.backend.search.youtube_search import youtube_search
+result = youtube_search("<query>", max_results=1)
+print(result)
+PY
+```
+
+Reference-only API/search code lives in:
+
+```text
+docs/reference/metadata_discovery_workbench/
+```
+
+Do not treat that folder as production code.
 
 ### Current Boundary
-No crawler yet. No YouTube/Reddit API wiring yet.
-No backend/frontend implementation yet.
+SQLite storage is the active backend foundation.
+YouTube `search.list` call + first normalization pass are active and live-smoke verified.
+Next target: commit one YouTube search result into SQLite.
+Reddit search is still pending.
+No crawler, rater, raw-content fetcher, frontend, or report generator yet.
 
 The first useful scaffold is the detector loop:
 

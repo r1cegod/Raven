@@ -4,3 +4,4 @@
 > The daily file is the log. This index is the map.
 
 - 2026-04-15 | Repo scaffold reset into empty `src/backend` and `src/frontend` structure | [entry](./dev/days/2026-04-15.md)
+- 2026-04-19 | SQLite foundation and active YouTube search layer live-smoke verified; next seam is committing one YouTube candidate into SQLite | [entry](./dev/days/2026-04-19.md)
