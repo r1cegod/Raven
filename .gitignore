@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+.venv-win/
+
+# Local env
+.env
+
+# Raven runtime data
+/data/
+*.sqlite
+*.sqlite-*
+eval/threads/
+
+# Local docs/research notes; do not publish with the app request.
+docs/
+
+# OS/editor
+.DS_Store
+.idea/
+.vscode/
+scratch
+.codex
