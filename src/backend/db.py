@@ -47,15 +47,53 @@ def create_schema(db: sqlite3.Connection) -> None:
             link TEXT NOT NULL UNIQUE,
             author_or_channel TEXT NOT NULL,
             published_at TEXT NOT NULL,
-            source_metric TEXT NOT NULL,
+            channel_id TEXT NOT NULL,
+            channel_title TEXT NOT NULL,
+            view_count INTEGER NOT NULL,
             UNIQUE(source, platform_id)
         );
+                     
+        CREATE TABLE IF NOT EXISTS query_log (
+            id INTEGER PRIMARY KEY,
+            run_id INTEGER NOT NULL REFERENCES raven_runs(id),
+            query_id INTEGER REFERENCES raven_queries(id),
+            created_at TEXT NOT NULL,
+            query TEXT NOT NULL,
+            query_create BOOLEAN DEFAULT 1,
+            error_raw TEXT
+        );
+
+        CREATE TABLE IF NOT EXISTS candidate_log (
+            id INTEGER PRIMARY KEY,
+            run_id INTEGER NOT NULL REFERENCES raven_runs(id),
+            query_id INTEGER NOT NULL REFERENCES raven_queries(id),
+            query_log_id INTEGER NOT NULL REFERENCES query_log(id),
+            api_log_id INTEGER NOT NULL REFERENCES api_log(id),
+            created_at TEXT NOT NULL,
+            candidate_create BOOLEAN DEFAULT 1,
+            error_raw TEXT
+        );
+                     
+        CREATE TABLE IF NOT EXISTS api_log (
+            id INTEGER PRIMARY KEY,
+            query_log_id INTEGER REFERENCES query_log(id),
+            created_at TEXT NOT NULL,
+            search_list_finish BOOLEAN DEFAULT 1,
+            search_list_status INTEGER NOT NULL,
+            search_list_error TEXT,
+            video_list_finish BOOLEAN DEFAULT 1,
+            video_list_status INTEGER NOT NULL,
+            video_list_error TEXT
+        );  
+                                  
     """)
 
-def init(path: str) -> None:
+def init(path: str = "src/backend/data/raven.sqlite") -> sqlite3.Connection:
     db = connect(path)
-    create_query(db)
+    create_schema(db)
+    return db
 
+#CREATEEE
 def create_run(
     db: sqlite3.Connection, 
     target: str
@@ -98,32 +136,65 @@ def create_candidate(
     link: str, 
     author_or_channel: str, 
     published_at: str, 
-    source_metric: str
-    ) -> int:
+    channel_id: str,
+    channel_title: str,
+    view_count: int
+    ) -> int | None:
 
     cursor = db.execute(
-        "INSERT INTO raven_candidates (run_id, query_id, created_at, source, platform_id, title, description, link, author_or_channel, published_at, source_metric) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        (run_id, query_id, now_time(), source, platform_id, title, description, link, author_or_channel, published_at, source_metric)
+        "INSERT OR IGNORE INTO raven_candidates (run_id, query_id, created_at, source, platform_id, title, description, link, author_or_channel, published_at, channel_id, channel_title, view_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? ,?)",
+        (run_id, query_id, now_time(), source, platform_id, title, description, link, author_or_channel, published_at, channel_id, channel_title, view_count)
+    )
+    db.commit()
+    
+    if cursor.rowcount == 0:
+        return None
+    return cursor.lastrowid
+
+def create_query_log(
+    db: sqlite3.Connection, 
+    run_id: int, 
+    query_id: int | None, 
+    query: str,
+    query_create: bool,
+    error_raw: str
+) -> int:
+    cursor = db.execute(
+        "INSERT INTO query_log (run_id, query_id, created_at, query, query_create, error_raw) VALUES (?, ?, ?, ?, ?, ?)",
+        (run_id, query_id, now_time(), query, query_create, error_raw)
     )
     db.commit()
     return cursor.lastrowid
 
+def create_candidate_log(
+    db: sqlite3.Connection, 
+    run_id: int, 
+    query_id: int, 
+    query_log_id: int,
+    api_log_id: int,
+    candidate_create: bool,
+    error_raw: str,
+) -> int:
+    cursor = db.execute(
+        "INSERT INTO candidate_log (run_id, query_id, query_log_id, api_log_id, created_at, candidate_create, error_raw) VALUES (?, ? ,?, ?, ?, ?, ?)",
+        (run_id, query_id, query_log_id, api_log_id, now_time(), candidate_create, error_raw)
+    )
+    db.commit()
+    return cursor.lastrowid
 
-def list_run_candidates(db: sqlite3.Connection, run_id: int) -> list[sqlite3.Row]:
-    rows = db.execute(
-        """SELECT 
-            raven_runs.target AS run_target,
-            raven_queries.source AS query_source,
-            raven_queries.query AS query_text,
-            raven_candidates.source AS candidate_source,
-            raven_candidates.title AS candidate_title,
-            raven_candidates.link AS candidate_link
-        FROM raven_candidates 
-        JOIN raven_runs ON raven_runs.id = raven_candidates.run_id 
-        JOIN raven_queries ON raven_queries.id = raven_candidates.query_id
-        WHERE raven_runs.id = ? 
-        ORDER BY raven_queries.query_index, raven_candidates.id
-        """,
-        (run_id,)
-    ).fetchall()
-    return rows
+def create_api_log(
+    db: sqlite3.Connection, 
+    query_log_id: int,
+    search_list_finish: bool,
+    search_list_status: int,
+    search_list_error: str,
+    video_list_finish: bool,
+    video_list_status: int,
+    video_list_error:str
+) -> int:
+    cursor = db.execute(
+        "INSERT INTO api_log (query_log_id, created_at, search_list_finish, search_list_status, search_list_error, video_list_finish, video_list_status, video_list_error) VALUES (?, ?, ?, ?, ?, ? ,? ,?)",
+        (query_log_id, now_time(), search_list_finish, search_list_status, search_list_error, video_list_finish, video_list_status, video_list_error)
+    )
+    db.commit()
+    return cursor.lastrowid
