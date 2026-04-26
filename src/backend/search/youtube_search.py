@@ -28,19 +28,19 @@ class VideoResponse:
 class YoutubeSearchResult:
     query_list: list[dict[str, Any]]
     candidates_list: list[dict[str, Any]]
-    error: list[str] | None = None
     search_list_finish: bool 
     search_list_status: int
     search_list_error: str
     video_list_finish: bool
     video_list_status: int
     video_list_error: str
+    error: list[str] | None = None
 
 
 def api_get() -> str | None:
     return os.getenv("YOUTUBE_API_KEY")
 
-def searchs_call(query: str, max_results: int = 50) -> SearchResponse:
+def searchs_call(query: str, max_results: int = 50, duration: str = "medium") -> SearchResponse:
 
     #craft the request
     yt_api = api_get()
@@ -49,6 +49,7 @@ def searchs_call(query: str, max_results: int = 50) -> SearchResponse:
         "q": query,
         "type": "video",
         "order": "relevance",
+        "videoDuration": duration,
         "maxResults": str(max(1, min(max_results, 50))),
         "safeSearch": "none",
         "key": yt_api,
@@ -101,33 +102,47 @@ def youtube_search(query: str, max_results: int) -> YoutubeSearchResult:
     video_list_finish = False
 
     #search call
-    search_response = searchs_call(query, max_results)
-    search_status = search_response.status_code
-    search_raw = search_response.raw_response
-    search_items = search_raw.get("items", [])
-    if search_response.error:
-        errors.append(str(search_response.error))
-        search_error = str(search_response.error)
+    search_items = []
+    raw_responses = {}
+    search_statuses = []
+    for duration in ["medium", "long"]:
+        search_response = searchs_call(query, max_results, duration)
+        search_statuses.append(search_response.status_code)
+        raw_responses[duration] = search_response.raw_response
+        search_items.extend(search_response.raw_response.get("items", []))
+        if search_response.error:
+            errors.append(str(search_response.error))
+    search_status = 200 if search_statuses and all(status == 200 for status in search_statuses) else 0
+    search_raw = {"duration_searches": raw_responses}
+    if errors:
+        search_error = " | ".join(errors)
 
     #gather ids
     video_ids = []
-    for item in search_raw.get("items", []):
+    seen_video_ids = set()
+    for item in search_items:
         video_id = item.get("id", {}).get("videoId")
-        if not video_id:
+        if not video_id or video_id in seen_video_ids:
             continue
+        seen_video_ids.add(video_id)
         video_ids.append(video_id)
 
     if video_ids:
         #video call
-        video_response = videos_call(video_ids)
-        video_raw = video_response.raw_response
-        video_status = video_response.status_code
-        video_items = video_raw.get("items", [])
-        if video_response.error:
-            errors.append(str(video_response.error))
-            video_error = str(video_response.error)
-        if video_status == 200:
-            video_list_finish = True
+        video_items = []
+        video_raw = {"items": []}
+        video_statuses = []
+        for start in range(0, len(video_ids), 50):
+            video_response = videos_call(video_ids[start:start + 50])
+            video_statuses.append(video_response.status_code)
+            video_items.extend(video_response.raw_response.get("items", []))
+            if video_response.error:
+                errors.append(str(video_response.error))
+        video_raw["items"] = video_items
+        video_status = 200 if video_statuses and all(status == 200 for status in video_statuses) else 0
+        if errors:
+            video_error = " | ".join(errors)
+        video_list_finish = video_status == 200
 
         enriched_by_id = {
             item.get("id", ""): item
@@ -147,11 +162,13 @@ def youtube_search(query: str, max_results: int) -> YoutubeSearchResult:
 
             #build candidates
             if video_status != 0 and video_raw:
+                seen_candidate_ids = set()
                 for item in search_items:
                     video_id = item.get("id", {}).get("videoId")
                     snippet = item.get("snippet", {})
-                    if not video_id:
+                    if not video_id or video_id in seen_candidate_ids:
                         continue
+                    seen_candidate_ids.add(video_id)
 
                     #get the candidate item the same video id
                     enriched_item = enriched_by_id.get(video_id, {})
@@ -160,7 +177,7 @@ def youtube_search(query: str, max_results: int) -> YoutubeSearchResult:
                     raw_view_count = enriched_stats.get("viewCount", 0)
                     view_count = int(raw_view_count)
 
-                    if view_count >= 10000:
+                    if view_count >= 40000:
                         candidates_pending = {
                             "source": "youtube",
                             "platform_id": video_id,

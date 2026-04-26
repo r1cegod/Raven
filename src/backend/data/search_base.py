@@ -1,4 +1,5 @@
-import json, sqlite3
+import json
+import sqlite3
 
 from src.backend.search.youtube_search import youtube_search
 from src.backend.db import create_query, create_candidate, init, create_query_log, create_api_log, create_candidate_log

@@ -9,9 +9,10 @@ __pycache__/
 
 # Local env
 .env
+eval
 
 # Raven runtime data
-/data/
+/data
 *.sqlite
 *.sqlite-*
 eval/threads/

@@ -1,4 +1,6 @@
 import sqlite3
+import json
+from typing import Any
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
@@ -50,6 +52,14 @@ def create_schema(db: sqlite3.Connection) -> None:
             channel_id TEXT NOT NULL,
             channel_title TEXT NOT NULL,
             view_count INTEGER NOT NULL,
+            sexy_label TEXT,
+            positive_pull TEXT,
+            negative_push TEXT,
+            title_pull TEXT,
+            preview_pull TEXT,
+            final_verdict TEXT,
+            final_decision TEXT,
+            final_reason TEXT,
             UNIQUE(source, platform_id)
         );
                      
@@ -198,3 +208,108 @@ def create_api_log(
     )
     db.commit()
     return cursor.lastrowid
+
+#update
+def candidates_rank(
+    db: sqlite3.Connection,
+    candidate_id: int,
+    sexy_label: str,
+    positive_pull: list[str],
+    negative_push: list[str],
+    title_pull: str,
+    preview_pull: str,
+    final_verdict: str
+) -> None:
+    db.execute(
+        """
+        UPDATE raven_candidates
+        SET sexy_label = ?, positive_pull = ?, negative_push = ?, title_pull = ?, preview_pull = ?, final_verdict = ?
+        WHERE id = ?
+        """,
+        (sexy_label, json.dumps(positive_pull), json.dumps(negative_push), title_pull, preview_pull, final_verdict, candidate_id)
+    )
+    db.commit()
+
+
+def candidates_final_decision(
+    db: sqlite3.Connection,
+    candidate_id: int,
+    final_decision: str,
+    final_reason: str,
+) -> None:
+    db.execute(
+        """
+        UPDATE raven_candidates
+        SET final_decision = ?, final_reason = ?
+        WHERE id = ?
+        """,
+        (final_decision, final_reason, candidate_id)
+    )
+    db.commit()
+
+#list
+def candidates_tier_0(
+    db: sqlite3.Connection,
+    query_id: int
+) -> list[dict[str, Any]]:
+    cursor = db.execute(
+        """
+        SELECT id, title, description
+        FROM raven_candidates
+        WHERE query_id = ?
+        ORDER BY id
+        """,
+        (query_id,)
+    )
+    rows = cursor.fetchall()
+    keys = ["id", "title", "description"]
+    row_list = [dict(zip(keys, row)) for row in rows]
+    return row_list
+
+def get_query_ids(
+    db: sqlite3.Connection,
+    run_id: int
+) -> list[int]:
+    cursor = db.execute(
+        """
+        SELECT id
+        FROM raven_queries
+        WHERE run_id = ?
+        ORDER BY query_index
+        """,
+        (run_id,)
+    )
+    rows = cursor.fetchall()
+    return [row["id"] for row in rows]
+
+
+def candidates_for_final_decision(
+    db: sqlite3.Connection,
+    run_id: int,
+) -> list[dict[str, Any]]:
+    cursor = db.execute(
+        """
+        SELECT
+            c.id,
+            q.query,
+            c.title,
+            c.sexy_label,
+            c.positive_pull,
+            c.negative_push,
+            c.final_verdict
+        FROM raven_candidates c
+        JOIN raven_queries q ON q.id = c.query_id
+        WHERE c.run_id = ?
+          AND c.sexy_label IS NOT NULL
+        ORDER BY
+            CASE c.sexy_label
+                WHEN 'must_click' THEN 1
+                WHEN 'click' THEN 2
+                WHEN 'maybe' THEN 3
+                ELSE 4
+            END,
+            c.id
+        """,
+        (run_id,)
+    )
+    return [dict(row) for row in cursor.fetchall()]
