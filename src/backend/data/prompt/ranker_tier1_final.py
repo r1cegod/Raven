@@ -27,9 +27,12 @@ Each block may include:
 - query
 - tier1_label
 - title
+- published_at
+- view_count
 - tier1_reasoning
 
 Treat the packet as metadata and Tier 1 judgment only. It is not raw evidence.
+Publish date and view count are decision signals, not proof of quality.
 </input_contract>
 
 <output_contract>
@@ -62,6 +65,16 @@ Use Duc's source taste:
   source/channel/tactic in the title can be enough to keep for human audit
 - keep agentic/automation content only when it reveals a new source, tactic, or
   leverage pattern
+- for channel/audience-growth topics, keep platform mechanics and competitive
+  leverage angles: deletion/policy risk, old-vs-new channel state, posting
+  experiments, competitor-copying, channel cloning workflows, CTR/retention, and
+  niche platform configuration issues
+- do not throw out a row merely because it says viral, AI, hack, or clone when
+  the title still exposes a bounded experiment or platform mechanism
+- use publish date and view count as tie-breakers and quality pressure:
+  recent uploads with real traction can reveal live tactics, older high-view
+  sources can be kept when the title still shows an evergreen mechanism, and
+  stale/generic high-view content should not beat a lower-view unusual mechanism
 - throw out n8n/no-code template noise unless it has a distinct source angle
 - throw out sessions, masterclasses, guru talks, basic CRM/tool tutorials,
   broad strategy, generic best-strategy claims, and motivational advice
@@ -86,6 +99,8 @@ candidate_id: {candidate_id}
 tier1_query: {query}
 tier1_label: {sexy_label}
 title: {title}
+published_at: {published_at}
+view_count: {view_count}
 tier1_reasoning: {final_verdict}
 </candidate>"""
 

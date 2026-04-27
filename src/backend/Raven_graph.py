@@ -1,5 +1,4 @@
 import os
-import json
 from typing import Literal
 from dotenv import load_dotenv
 
@@ -29,12 +28,14 @@ from src.backend.db import (
 from src.backend.data.state import RavenState
 
 load_dotenv()
-enricher_key = os.environ["ENRICHER_DEV_KEY"]
+low_llm_key = os.environ["LOW_LLM_KEY"]
+high_llm_key = os.environ["HIGH_LLM_KEY"]
 
 #class output
 class EnricherOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     queries: list[str]
+    key_words: list[str]
     
 class RankerTier1(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -53,19 +54,19 @@ class Tier1FinalOutput(BaseModel):
 
 
 llm = ChatOpenAI(
-    api_key=SecretStr(enricher_key),
+    api_key=SecretStr(low_llm_key),
     model="gpt-5.4-mini",
     temperature=0.7,
     max_retries=3,
 )
 enricher_base_llm = ChatOpenAI(
-    api_key=SecretStr(enricher_key),
+    api_key=SecretStr(low_llm_key),
     model="gpt-5.4-mini",
     temperature=0.7,
     max_retries=3,
 )
 high_llm = ChatOpenAI(
-    api_key=SecretStr(enricher_key),
+    api_key=SecretStr(high_llm_key),
     model="gpt-5.5",
     temperature=0.7,
     max_retries=3,
@@ -84,6 +85,8 @@ def make_tier1_final_packet(candidates: list[dict]) -> str:
             sexy_label=candidate.get("sexy_label") or "",
             title=candidate.get("title", ""),
             final_verdict=candidate.get("final_verdict", ""),
+            published_at=candidate.get("published_at", ""),
+            view_count=candidate.get("view_count", 0)
         ))
     return "\n".join(packet_blocks)
 
@@ -97,7 +100,8 @@ def run_create(state: RavenState):
 def youtube_search(state: RavenState) -> dict:
     queries = state["queries"]
     run_id = state["run_id"]
-    done = search_youtube(queries, run_id)
+    key_words = state["key_words"]
+    done = search_youtube(queries, run_id, key_words)
     return {"yt_search_done": done}
 
 def enricher(state: RavenState) -> dict:
@@ -108,7 +112,7 @@ def enricher(state: RavenState) -> dict:
                 HumanMessage(query),
             ]
         )
-    return {"queries": response.queries}
+    return {"queries": response.queries, "key_words": response.key_words}
 
 def ranker_tier_1(state: RavenState) -> dict:
     db = init()

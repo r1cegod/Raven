@@ -293,6 +293,8 @@ def candidates_for_final_decision(
             c.id,
             q.query,
             c.title,
+            c.published_at,
+            c.view_count,
             c.sexy_label,
             c.positive_pull,
             c.negative_push,

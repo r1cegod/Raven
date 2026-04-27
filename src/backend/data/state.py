@@ -5,6 +5,7 @@ from operator import add
 class RavenState(TypedDict, total=False):
     query: str
     queries: list[str]
+    key_words: list[str]
     run_id: int
     db: Any
 

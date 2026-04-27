@@ -5,11 +5,11 @@ from src.backend.search.youtube_search import youtube_search
 from src.backend.db import create_query, create_candidate, init, create_query_log, create_api_log, create_candidate_log
 
 
-def search_youtube(queries: list[str], run_id: int) -> bool:
+def search_youtube(queries: list[str], run_id: int, key_words: list[str]) -> bool:
     runs = []
 
     for query_index, query in enumerate(queries):
-        result = youtube_search(query, 50)
+        result = youtube_search(query, 50, key_words)
         search_finish = result.search_list_finish
         search_status = result.search_list_status
         search_error = result.search_list_error

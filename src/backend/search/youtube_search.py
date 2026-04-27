@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from typing import Any
 from dotenv import load_dotenv
 
+from datetime import datetime, timezone, timedelta
+
 load_dotenv()
 YOUTUBE_SEARCH_URL = "https://www.googleapis.com/youtube/v3/search"
 YOUTUBE_VIDEOS_URL = "https://www.googleapis.com/youtube/v3/videos"
@@ -40,6 +42,34 @@ class YoutubeSearchResult:
 def api_get() -> str | None:
     return os.getenv("YOUTUBE_API_KEY")
 
+#key word filter
+def title_has_key_word(title: str, key_words: list[str]) -> bool:
+    title_lower = title.lower()
+    return any(
+        key_word.lower() in title_lower
+        for key_word in key_words
+    )
+
+#date filter
+def parse_youtube_published_at(published_at: str) -> datetime | None:
+    if not published_at:
+        return None
+    try:
+        return datetime.fromisoformat(
+            published_at.replace("Z", "+00:00")
+        )
+    except ValueError:
+        return None
+
+def is_recent_enough(published_at: str, max_age_days: int = 365) -> bool:
+    published_dt = parse_youtube_published_at(published_at)
+    if published_dt is None:
+        return False
+    cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
+    return published_dt >= cutoff
+
+
+#call yt api
 def searchs_call(query: str, max_results: int = 50, duration: str = "medium") -> SearchResponse:
 
     #craft the request
@@ -91,7 +121,9 @@ def videos_call(video_ids: list[str]) -> VideoResponse:
     except urllib.error.URLError as errors:
         return VideoResponse(status_code=0, raw_response={"error": str(errors)}, error=str(errors))
 
-def youtube_search(query: str, max_results: int) -> YoutubeSearchResult:
+
+#compile the results
+def youtube_search(query: str, max_results: int, key_words: list[str]) -> YoutubeSearchResult:
     candidates_block = []
     query_block = []
     errors = []
@@ -175,17 +207,19 @@ def youtube_search(query: str, max_results: int) -> YoutubeSearchResult:
                     enriched_snippet = enriched_item.get("snippet", {})
                     enriched_stats = enriched_item.get("statistics", {})
                     raw_view_count = enriched_stats.get("viewCount", 0)
+                    publish_date = snippet.get("publishedAt", "")
                     view_count = int(raw_view_count)
+                    title = snippet.get("title", "")
 
-                    if view_count >= 40000:
+                    if view_count >= 40000 and is_recent_enough(published_at=publish_date) and title_has_key_word(title, key_words):
                         candidates_pending = {
                             "source": "youtube",
                             "platform_id": video_id,
-                            "title": snippet.get("title", ""),
+                            "title": title,
                             "description": snippet.get("description", ""),
                             "link": f"https://www.youtube.com/watch?v={video_id}",
                             "author_or_channel": snippet.get("channelTitle", ""),
-                            "published_at": snippet.get("publishedAt", ""),
+                            "published_at": publish_date,
                             "channel_id": enriched_snippet.get("channelId", ""),
                             "channel_title": enriched_snippet.get("channelTitle", ""),
                             "view_count": view_count

@@ -25,6 +25,11 @@ live: scraping, maps, Reddit, directories, communities, public databases, search
 operators, cold outbound systems, failure reasons, and hidden distribution
 channels.
 
+For channel/audience-growth topics, platform mechanics count as leverage:
+deletion/policy risk, old-vs-new channel state, upload-frequency tests,
+competitor-copying, named-tool channel cloning, CTR/retention analytics, and
+niche platform configuration. These are at least maybe unless clearly off-target.
+
 In acquisition/lead topics, a concrete source/channel/tactic in the title is
 enough for maybe or click even if the preview is thin. Examples: scraping,
 Google Maps, Reddit, directories, Clay, Apollo, Facebook ads, LinkedIn, SaaS
@@ -43,6 +48,8 @@ For lead-generation metadata, calibrate upward:
 He dislikes slow or generic content: sessions, full courses, guru talks, broad
 strategy, basic CRM/tool tutorials, motivational advice, and generic "best
 strategy" claims.
+Broad beginner-mistake lists in the wrong language are skip unless the metadata
+names a specific mechanism, experiment, or platform state.
 
 Do not auto-skip acquisition videos just because they say masterclass,
 marketing expert, landing page, or Facebook Ads. If the metadata hints at

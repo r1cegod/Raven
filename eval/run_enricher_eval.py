@@ -21,7 +21,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from dotenv import load_dotenv
 
-from src.backend.Raven_graph import raven_graph
+from src.backend.Raven_graph import enricher
 
 load_dotenv(REPO_ROOT / ".env")
 
@@ -72,9 +72,13 @@ OPERATIONAL_MARKERS = (
     "template",
     "playbook",
     "case study",
+    "debugging",
     "example",
     "examples",
+    "incident",
     "teardown",
+    "postmortem",
+    "rollback",
     "mistake",
     "mistakes",
     "failure",
@@ -84,6 +88,22 @@ OPERATIONAL_MARKERS = (
     "tradeoffs",
     "numbers",
 )
+
+DEFAULT_FORBIDDEN_KEY_WORDS = {
+    "build",
+    "case",
+    "example",
+    "examples",
+    "guide",
+    "method",
+    "study",
+    "system",
+    "tip",
+    "tips",
+    "tool",
+    "tools",
+    "workflow",
+}
 
 
 @dataclass(frozen=True)
@@ -192,14 +212,35 @@ def audit_queries(raw_input: dict[str, Any], output: dict[str, Any]) -> dict[str
     queries = output.get("queries") or []
     if not isinstance(queries, list):
         queries = []
+    key_words = output.get("key_words") or []
+    if not isinstance(key_words, list):
+        key_words = []
 
     cleaned_queries = [" ".join(str(query).split()) for query in queries]
     query_keys = [query.casefold() for query in cleaned_queries]
+    cleaned_key_words = [
+        normalize_token(" ".join(str(keyword).casefold().split()))
+        for keyword in key_words
+        if str(keyword).strip()
+    ]
+    key_word_tokens = set(cleaned_key_words)
     target_tokens = tokenize(target)
     expected_keywords = [
         normalize_token(str(keyword).casefold())
         for keyword in raw_input.get("expected_keywords", [])
     ]
+    required_terms_per_query = [
+        normalize_token(str(term).casefold())
+        for term in raw_input.get("required_terms_per_query", [])
+    ]
+    forbidden_query_phrases = [
+        " ".join(str(phrase).casefold().split())
+        for phrase in raw_input.get("forbidden_query_phrases", [])
+    ]
+    forbidden_key_words = {
+        normalize_token(str(keyword).casefold())
+        for keyword in raw_input.get("forbidden_key_words", DEFAULT_FORBIDDEN_KEY_WORDS)
+    }
     relevant_count = 0
     for query in cleaned_queries:
         query_tokens = tokenize(query)
@@ -226,6 +267,30 @@ def audit_queries(raw_input: dict[str, Any], output: dict[str, Any]) -> dict[str
             any(keyword in tokenize(query) for query in cleaned_queries)
             for keyword in expected_keywords
         ),
+        "has_key_words": bool(cleaned_key_words),
+        "no_empty_key_words": len(cleaned_key_words) == len(key_words),
+        "key_word_count_ok": 1 <= len(cleaned_key_words) <= 8,
+        "key_words_from_target": all(
+            keyword in target_tokens
+            for keyword in cleaned_key_words
+        ),
+        "expected_key_words_present": all(
+            keyword in key_word_tokens
+            for keyword in expected_keywords
+        ),
+        "forbidden_key_words_absent": not any(
+            keyword in forbidden_key_words
+            for keyword in cleaned_key_words
+        ),
+        "required_terms_per_query_present": all(
+            all(term in tokenize(query) for term in required_terms_per_query)
+            for query in cleaned_queries
+        ),
+        "forbidden_query_phrases_absent": not any(
+            phrase and phrase in query.casefold()
+            for phrase in forbidden_query_phrases
+            for query in cleaned_queries
+        ),
         "operational_specificity_ok": len(marker_hits) >= required_marker_count,
         "no_control_leak": not any(
             marker in query.casefold()
@@ -241,6 +306,10 @@ def audit_queries(raw_input: dict[str, Any], output: dict[str, Any]) -> dict[str
         "relevance_ratio": relevance_ratio,
         "required_marker_count": required_marker_count,
         "operational_markers": marker_hits,
+        "key_words": cleaned_key_words,
+        "forbidden_key_words": sorted(forbidden_key_words),
+        "required_terms_per_query": required_terms_per_query,
+        "forbidden_query_phrases": forbidden_query_phrases,
     }
 
 
@@ -262,7 +331,7 @@ def run_one_input(
     timestamp = datetime.now().astimezone().isoformat()
     normalized_input = {"query": " ".join(raw_input["target"].split())}
     trace: dict[str, Any] = {
-        "graph_name": "raven_graph",
+        "graph_name": "raven_enricher_node",
         "graph_key": "enricher",
         "graph_module": "src.backend.Raven_graph",
         "input_file": str(file_path.relative_to(REPO_ROOT)),
@@ -278,8 +347,7 @@ def run_one_input(
     }
 
     try:
-        config = {"configurable": {"thread_id": thread_id}}
-        output = raven_graph.invoke(normalized_input, config=config)
+        output = enricher(normalized_input)
         audit = audit_queries(raw_input=raw_input, output=output)
         trace["output"] = serialize_value(output)
         trace["audit"] = audit
@@ -391,7 +459,7 @@ def main() -> None:
     THREADS_DIR.mkdir(parents=True, exist_ok=True)
 
     print(f"File: {file_path.relative_to(REPO_ROOT)}")
-    print("Graph: src.backend.Raven_graph.raven_graph")
+    print("Graph: src.backend.Raven_graph.enricher")
     print(f"Mode: {args.mode}")
     print(f"Inputs: {len(inputs)}")
 
