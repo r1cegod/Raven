@@ -61,6 +61,10 @@ def parse_youtube_published_at(published_at: str) -> datetime | None:
     except ValueError:
         return None
 
+def youtube_published_after(max_age_days: int = 365) -> str:
+    cutoff = datetime.now(timezone.utc) - timedelta(days=max_age_days)
+    return cutoff.replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
 def is_recent_enough(published_at: str, max_age_days: int = 365) -> bool:
     published_dt = parse_youtube_published_at(published_at)
     if published_dt is None:
@@ -70,7 +74,13 @@ def is_recent_enough(published_at: str, max_age_days: int = 365) -> bool:
 
 
 #call yt api
-def searchs_call(query: str, max_results: int = 50, duration: str = "medium") -> SearchResponse:
+def searchs_call(
+    query: str,
+    max_results: int = 50,
+    duration: str = "medium",
+    max_age_days: int = 365,
+    language: str = "en",
+) -> SearchResponse:
 
     #craft the request
     yt_api = api_get()
@@ -80,6 +90,8 @@ def searchs_call(query: str, max_results: int = 50, duration: str = "medium") ->
         "type": "video",
         "order": "relevance",
         "videoDuration": duration,
+        "publishedAfter": youtube_published_after(max_age_days),
+        "relevanceLanguage": language,
         "maxResults": str(max(1, min(max_results, 50))),
         "safeSearch": "none",
         "key": yt_api,
@@ -123,7 +135,13 @@ def videos_call(video_ids: list[str]) -> VideoResponse:
 
 
 #compile the results
-def youtube_search(query: str, max_results: int, key_words: list[str]) -> YoutubeSearchResult:
+def youtube_search(
+    query: str,
+    max_results: int,
+    key_words: list[str],
+    language: str = "en",
+    max_age_days: int = 365,
+) -> YoutubeSearchResult:
     candidates_block = []
     query_block = []
     errors = []
@@ -138,7 +156,13 @@ def youtube_search(query: str, max_results: int, key_words: list[str]) -> Youtub
     raw_responses = {}
     search_statuses = []
     for duration in ["medium", "long"]:
-        search_response = searchs_call(query, max_results, duration)
+        search_response = searchs_call(
+            query,
+            max_results,
+            duration,
+            max_age_days=max_age_days,
+            language=language,
+        )
         search_statuses.append(search_response.status_code)
         raw_responses[duration] = search_response.raw_response
         search_items.extend(search_response.raw_response.get("items", []))
@@ -211,7 +235,7 @@ def youtube_search(query: str, max_results: int, key_words: list[str]) -> Youtub
                     view_count = int(raw_view_count)
                     title = snippet.get("title", "")
 
-                    if view_count >= 40000 and is_recent_enough(published_at=publish_date) and title_has_key_word(title, key_words):
+                    if view_count >= 40000 and is_recent_enough(publish_date, max_age_days) and title_has_key_word(title, key_words):
                         candidates_pending = {
                             "source": "youtube",
                             "platform_id": video_id,

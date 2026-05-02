@@ -9,13 +9,20 @@ __pycache__/
 
 # Local env
 .env
-eval
+
+# Eval workspace
+# Keep eval harnesses and JSONL fixtures trackable; ignore generated artifacts.
+eval/__pycache__/
+eval/packets/
+eval/checkpoints/
+eval/live/
+eval/threads/
 
 # Raven runtime data
 /data
 *.sqlite
 *.sqlite-*
-eval/threads/
+src/backend/data/*.sqlite
 
 # Local docs/research notes; do not publish with the app request.
 docs/
@@ -26,3 +33,9 @@ docs/
 .vscode/
 scratch
 .codex
+
+# Repo-local agent wrapper; personal/session-specific.
+AGENTS.md
+
+# Legacy root test folder violates Raven's backend test-folder rule.
+/test/

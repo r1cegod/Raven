@@ -18,11 +18,10 @@ from src.backend.data.prompt.ranker_tier1_final import (
 from src.backend.data.search_base import search_youtube
 from src.backend.db import (
     init,
-    create_run,
     candidates_tier_0,
     candidates_rank,
     candidates_for_final_decision,
-    candidates_final_decision,
+    candidates_final_label,
     get_query_ids
 )
 from src.backend.data.state import RavenState
@@ -39,13 +38,13 @@ class EnricherOutput(BaseModel):
     
 class RankerTier1(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    sexy_label: Literal["skip", "maybe", "click", "must_click"]
+    final_decision: Literal["keep", "throw_out"]
     reasoning: str = Field(max_length=360)
 
 class Tier1FinalDecision(BaseModel):
     model_config = ConfigDict(extra="forbid")
     candidate_id: int
-    final_decision: Literal["keep", "throw_out"]
+    sexy_label: Literal["maybe", "click", "must_click"]
     reason: str = Field(max_length=220)
 
 class Tier1FinalOutput(BaseModel):
@@ -70,6 +69,7 @@ high_llm = ChatOpenAI(
     model="gpt-5.5",
     temperature=0.7,
     max_retries=3,
+    reasoning_effort="medium",
 )
 enricher_llm = enricher_base_llm.with_structured_output(EnricherOutput)
 ranker_tier1_llm = llm.with_structured_output(RankerTier1)
@@ -82,21 +82,15 @@ def make_tier1_final_packet(candidates: list[dict]) -> str:
         packet_blocks.append(PACKET.format(
             candidate_id=candidate["id"],
             query=candidate.get("query", ""),
-            sexy_label=candidate.get("sexy_label") or "",
+            final_decision=candidate.get("final_decision") or "",
             title=candidate.get("title", ""),
-            final_verdict=candidate.get("final_verdict", ""),
+            tier1_reasoning=candidate.get("tier1_reasoning", ""),
             published_at=candidate.get("published_at", ""),
             view_count=candidate.get("view_count", 0)
         ))
     return "\n".join(packet_blocks)
 
 #nodes
-def run_create(state: RavenState):
-    query = state["query"]
-    db = init()
-    run_id = create_run(db, query)
-    return {"run_id": run_id, "db": db}
-
 def youtube_search(state: RavenState) -> dict:
     queries = state["queries"]
     run_id = state["run_id"]
@@ -105,11 +99,11 @@ def youtube_search(state: RavenState) -> dict:
     return {"yt_search_done": done}
 
 def enricher(state: RavenState) -> dict:
-    query = state.get("query", "")
+    request = state["request"]
     response = enricher_llm.invoke(
             [
                 SystemMessage(ENRICHER_PROMPT),
-                HumanMessage(query),
+                HumanMessage(request),
             ]
         )
     return {"queries": response.queries, "key_words": response.key_words}
@@ -121,20 +115,20 @@ def ranker_tier_1(state: RavenState) -> dict:
         candidate_id = candidate["id"]
         title = candidate.get("title", "")
         description = candidate.get("description", "")
-
         if title == "":
             return {"ranker_tier1_results": [{"id": candidate_id, "done": False}]}
         
-        response = ranker_tier1_llm.invoke(
-            [
+        response = ranker_tier1_llm.invoke([
                 SystemMessage(RANKER_TIER_1),
-                HumanMessage(TIER_1.format(title=title, description=description))
-            ]
-        )
-        sexy_label = response.sexy_label
+                HumanMessage(TIER_1.format(
+                    request=state["request"],
+                    title=title,
+                    description=description
+                ))
+            ])
+        final_decision = response.final_decision
         reasoning = response.reasoning
-
-        candidates_rank(db, candidate_id, sexy_label, [], [], "", "", reasoning)
+        candidates_rank(db, candidate_id, final_decision, reasoning)
         return {"ranker_tier1_results": [{"id": candidate_id, "done": True}]}
     finally:
         db.close()
@@ -142,7 +136,7 @@ def ranker_tier_1(state: RavenState) -> dict:
 def ranker_tier1_final(state: RavenState) -> dict:
     db = state["db"]
     run_id = state["run_id"]
-    target = state.get("query", "")
+    request = state["request"]
     tier1_results = state.get("ranker_tier1_results", [])
 
     #check if tier 1 really done
@@ -158,15 +152,17 @@ def ranker_tier1_final(state: RavenState) -> dict:
     response = ranker_tier1_final_llm.invoke(
         [
             SystemMessage(RANKER_TIER1_FINAL_PROMPT),
-            HumanMessage(RANKER_TIER1_FINAL_INPUT.format(target=target, candidate_packet=candidate_packet))
-        ]
-    )
+            HumanMessage(RANKER_TIER1_FINAL_INPUT.format(
+                request=request,
+                candidate_packet=candidate_packet
+            ))
+        ])
 
     for decision in response.decisions:
-        candidates_final_decision(
+        candidates_final_label(
             db=db,
             candidate_id=decision.candidate_id,
-            final_decision=decision.final_decision,
+            sexy_label=decision.sexy_label,
             final_reason=decision.reason,
         )
     return {"ranker_tier1_final_done": True}
@@ -184,22 +180,24 @@ def ranker_tier1_route(state: RavenState):
         candidate_blocks.extend(candidates)
     
     return [
-        Send("ranker_tier1", {"candidate": candidate})
+        Send("ranker_tier1", {
+            "candidate": candidate,
+            "request": state["request"]
+            }
+        )
         for candidate in candidate_blocks
     ]
 
 
 graph = StateGraph(RavenState)
 graph.add_node("enricher", enricher)
-graph.add_node("create_run", run_create)
 graph.add_node("youtube_search", youtube_search)
 graph.add_node("ranker_tier1", ranker_tier_1)
 graph.add_node("ranker_tier1_final", ranker_tier1_final)
 
-graph.add_edge(START, "create_run")
-graph.add_edge("create_run", "enricher")
+graph.add_edge(START, "enricher")
 graph.add_edge("enricher", "youtube_search")
 graph.add_conditional_edges("youtube_search", ranker_tier1_route, ["ranker_tier1"])
 graph.add_edge("ranker_tier1", "ranker_tier1_final")
 graph.add_edge("ranker_tier1_final", END)
-raven_graph = graph.compile()
+yt_ranker_tier1_graph = graph.compile()

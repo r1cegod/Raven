@@ -1,31 +1,26 @@
 import unittest
 
-from src.backend.Raven_graph import EnricherOutput, raven_graph
 from src.backend.data.prompt.enricher import ENRICHER_PROMPT
+from src.backend.raven_graph import raven_graph
+from src.backend.youtube_ranker_tier1 import EnricherOutput
 
 
 class EnricherContractTest(unittest.TestCase):
     def test_prompt_has_production_constraints(self) -> None:
         required_fragments = [
-            "Preserve the user's exact target as the first query",
             "Decide how many queries are needed",
+            "The request is not itself a search query",
             "Also output key_words",
             "cheap title relevance filtering",
             "key_words is extraction, not generation",
-            "original target only",
-            "Every key_word must be traceable to a word in the user's original query",
-            "Original-query membership is necessary but not sufficient",
+            "request only",
             "The word tools is forbidden in key_words",
-            "usually be 3-5 target-specific search anchors",
-            "Use only words from the original target",
+            "usually be 3-5 request-specific search anchors",
             "broad filter-poison words",
-            "key_words should look like grow, youtube, channel",
-            "Do not include tools or small",
-            "Bad key_words: reddit, complaints, project, management, tools, small, agencies",
-            "Good key_words: reddit, complaints, project, management, agencies",
+            "youtube, channel, growth, audience, distribution",
             "Do not create fake proper nouns",
             "failure mode",
-            "tools, numbers, metrics",
+            "tools, workflows, numbers",
         ]
 
         for fragment in required_fragments:

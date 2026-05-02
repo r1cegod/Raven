@@ -1,5 +1,4 @@
 import sqlite3
-import json
 from typing import Any
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -23,7 +22,7 @@ def create_schema(db: sqlite3.Connection) -> None:
         CREATE TABLE IF NOT EXISTS raven_runs (
             id INTEGER PRIMARY KEY,
             created_at TEXT NOT NULL,
-            target TEXT NOT NULL
+            request TEXT NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS raven_queries (
@@ -52,13 +51,13 @@ def create_schema(db: sqlite3.Connection) -> None:
             channel_id TEXT NOT NULL,
             channel_title TEXT NOT NULL,
             view_count INTEGER NOT NULL,
-            sexy_label TEXT,
+            final_decision TEXT,
             positive_pull TEXT,
             negative_push TEXT,
             title_pull TEXT,
             preview_pull TEXT,
             final_verdict TEXT,
-            final_decision TEXT,
+            sexy_label TEXT,
             final_reason TEXT,
             UNIQUE(source, platform_id)
         );
@@ -106,12 +105,12 @@ def init(path: str = "src/backend/data/raven.sqlite") -> sqlite3.Connection:
 #CREATEEE
 def create_run(
     db: sqlite3.Connection, 
-    target: str
+    request: str
     ) -> int:
 
     cursor = db.execute(
-        "INSERT INTO raven_runs (target, created_at) VALUES (?, ?)",
-        (target, now_time())
+        "INSERT INTO raven_runs (request, created_at) VALUES (?, ?)",
+        (request, now_time())
     )
     db.commit()
     return cursor.lastrowid
@@ -213,37 +212,33 @@ def create_api_log(
 def candidates_rank(
     db: sqlite3.Connection,
     candidate_id: int,
-    sexy_label: str,
-    positive_pull: list[str],
-    negative_push: list[str],
-    title_pull: str,
-    preview_pull: str,
-    final_verdict: str
+    final_decision: str,
+    reasoning: str
 ) -> None:
     db.execute(
         """
         UPDATE raven_candidates
-        SET sexy_label = ?, positive_pull = ?, negative_push = ?, title_pull = ?, preview_pull = ?, final_verdict = ?
+        SET final_decision = ?, final_verdict = ?
         WHERE id = ?
         """,
-        (sexy_label, json.dumps(positive_pull), json.dumps(negative_push), title_pull, preview_pull, final_verdict, candidate_id)
+        (final_decision, reasoning, candidate_id)
     )
     db.commit()
 
 
-def candidates_final_decision(
+def candidates_final_label(
     db: sqlite3.Connection,
     candidate_id: int,
-    final_decision: str,
+    sexy_label: str,
     final_reason: str,
 ) -> None:
     db.execute(
         """
         UPDATE raven_candidates
-        SET final_decision = ?, final_reason = ?
+        SET sexy_label = ?, final_reason = ?
         WHERE id = ?
         """,
-        (final_decision, final_reason, candidate_id)
+        (sexy_label, final_reason, candidate_id)
     )
     db.commit()
 
@@ -295,22 +290,15 @@ def candidates_for_final_decision(
             c.title,
             c.published_at,
             c.view_count,
-            c.sexy_label,
+            c.final_decision,
             c.positive_pull,
             c.negative_push,
-            c.final_verdict
+            c.final_verdict AS tier1_reasoning
         FROM raven_candidates c
         JOIN raven_queries q ON q.id = c.query_id
         WHERE c.run_id = ?
-          AND c.sexy_label IS NOT NULL
-        ORDER BY
-            CASE c.sexy_label
-                WHEN 'must_click' THEN 1
-                WHEN 'click' THEN 2
-                WHEN 'maybe' THEN 3
-                ELSE 4
-            END,
-            c.id
+          AND c.final_decision = 'keep'
+        ORDER BY c.id
         """,
         (run_id,)
     )
