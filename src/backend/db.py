@@ -45,7 +45,7 @@ def create_schema(db: sqlite3.Connection) -> None:
             platform_id TEXT NOT NULL,
             title TEXT NOT NULL,
             description TEXT NOT NULL,
-            link TEXT NOT NULL UNIQUE,
+            link TEXT NOT NULL,
             author_or_channel TEXT NOT NULL,
             published_at TEXT NOT NULL,
             channel_id TEXT NOT NULL,
@@ -59,7 +59,7 @@ def create_schema(db: sqlite3.Connection) -> None:
             final_verdict TEXT,
             sexy_label TEXT,
             final_reason TEXT,
-            UNIQUE(source, platform_id)
+            UNIQUE(run_id, source, platform_id)
         );
                      
         CREATE TABLE IF NOT EXISTS query_log (
@@ -94,6 +94,17 @@ def create_schema(db: sqlite3.Connection) -> None:
             video_list_status INTEGER NOT NULL,
             video_list_error TEXT
         );  
+                    
+        CREATE TABLE IF NOT EXISTS transcript_log(
+            id INTEGER PRIMARY KEY,
+            run_id INTEGER REFERENCES raven_runs(id),
+            query_id INTEGER REFERENCES raven_queries(id),
+            created_at TEXT NOT NULL,
+            video_id TEXT NOT NULL,
+            done BOOLEAN DEFAULT 0,
+            failure_type TEXT,
+            failure_reason TEXT
+        );
                                   
     """)
 
@@ -208,6 +219,21 @@ def create_api_log(
     db.commit()
     return cursor.lastrowid
 
+def transcript_log(
+    db: sqlite3.Connection, 
+    run_id: str,
+    query_id: str,
+    video_id: str,
+    failure_type: str,
+    failure_reason: str,
+    status: bool = False
+) -> None:
+    db.execute(
+        "INSERT INTO transcript_log (run_id, query_id, created_at, video_id, done, failure_type, failure_reason) VALUES (?, ?, ?, ?, ?, ? ,?)",
+        (run_id, query_id, now_time(), video_id, status, failure_type, failure_reason)
+    )
+    db.commit()
+
 #update
 def candidates_rank(
     db: sqlite3.Connection,
@@ -243,6 +269,42 @@ def candidates_final_label(
     db.commit()
 
 #list
+def get_query_video(
+    db: sqlite3.Connection,
+    run_id: str
+) -> list[dict[str, Any]]:
+    cursor = db.execute(
+        """
+        SELECT c.query_id, c.platform_id
+        FROM raven_candidates c
+        WHERE c.run_id = ?
+        AND c.final_decision = ?
+        ORDER BY c.id
+        """,
+        (run_id, "keep")
+    )
+    return [dict(row) for row in cursor.fetchall()]
+    
+
+def get_title(
+    db: sqlite3.Connection,
+    run_id: int,
+    video_id: str
+) -> dict:
+    cursor = db.execute(
+        """
+        SELECT title, description
+        FROM raven_candidates
+        WHERE platform_id = ?
+        AND run_id = ?
+        """,
+        (video_id, run_id)
+    )
+    row = cursor.fetchone()
+    title = row["title"]
+    description = row["description"]
+    return {"title": title, "description": description}
+
 def candidates_tier_0(
     db: sqlite3.Connection,
     query_id: int
@@ -276,7 +338,6 @@ def get_query_ids(
     )
     rows = cursor.fetchall()
     return [row["id"] for row in rows]
-
 
 def candidates_for_final_decision(
     db: sqlite3.Connection,

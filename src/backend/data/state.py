@@ -14,3 +14,5 @@ class RavenState(TypedDict, total=False):
     #ranker tier 1
     ranker_tier1_results: Annotated[list[dict], add]
     ranker_tier1_final_done: bool
+
+    tier2_transcript_done: bool

@@ -90,7 +90,7 @@ def search_youtube(queries: list[str], run_id: int, key_words: list[str]) -> boo
             )
 
         runs.append(True)
-    if False in runs:
+    if True not in runs:
         return False
     else:
         return True
